@@ -10,6 +10,7 @@ dependencies = [
     "pgvector>=0.3",
     "psycopg[binary]>=3.1",
     "httpx>=0.27",
+    "anthropic>=0.40",
 ]
 
 [dependency-groups]
@@ -36,7 +37,7 @@ plugins = ["pydantic.mypy"]
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["database", "models", "core"]
+packages = ["database", "models", "core", "agents"]
 
 [build-system]
 requires = ["hatchling"]
