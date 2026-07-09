@@ -16,5 +16,21 @@ services:
       timeout: 3s
       retries: 10
 
+  api:
+    build:
+      context: ..
+      dockerfile: infra/api.Dockerfile
+    container_name: health-platform-api
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/health_platform
+      # 可选：设置后 Agent 走真实 Anthropic API，否则为 mock 模式
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

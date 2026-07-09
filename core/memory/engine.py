@@ -159,6 +159,17 @@ class MemoryEngine:
             ).all()
             return [Insight.model_validate(row) for row in rows]
 
+    def list_insights(self, user_id: uuid.UUID, limit: int = 50) -> list[Insight]:
+        """按时间倒序列出该用户的洞察（无语义检索）。"""
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(orm.Insight)
+                .where(orm.Insight.user_id == user_id)
+                .order_by(orm.Insight.created_at.desc())
+                .limit(limit)
+            ).all()
+            return [Insight.model_validate(row) for row in rows]
+
     # ------------------------------------------------------------------
     # Layer 4 — Strategies
     # ------------------------------------------------------------------
