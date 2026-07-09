@@ -2,7 +2,8 @@
 
 - 离线部分：不依赖数据库，验证 alembic 能生成正确的 SQL（pgvector 扩展、全部表、关键约束）。
 - 在线部分：若设置 TEST_DATABASE_URL（CI 中由 pgvector 服务容器提供），
-  真实执行 upgrade head / downgrade base 并核对 information_schema。
+  真实执行迁移（tests/conftest.py 的会话级 migrated_engine：upgrade head，
+  会话结束 downgrade base）并核对 information_schema。
 """
 
 from __future__ import annotations
@@ -10,15 +11,16 @@ from __future__ import annotations
 import io
 import os
 import uuid
-from collections.abc import Iterator
 from contextlib import redirect_stdout
 from datetime import date
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
+
+from tests.conftest import requires_db
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -71,27 +73,8 @@ class TestOfflineSql:
             assert name in upgrade_sql, f"missing constraint {name}"
 
 
-TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
-
-pytestmark_live = pytest.mark.skipif(
-    not TEST_DATABASE_URL,
-    reason="TEST_DATABASE_URL not set (live migration tests run in CI with pgvector service)",
-)
-
-
-@pytestmark_live
+@requires_db
 class TestLiveMigration:
-    @pytest.fixture(scope="class")
-    def migrated_engine(self) -> Iterator[Engine]:
-        assert TEST_DATABASE_URL is not None
-        os.environ["DATABASE_URL"] = TEST_DATABASE_URL
-        cfg = _alembic_config()
-        command.upgrade(cfg, "head")
-        engine = create_engine(TEST_DATABASE_URL.replace("+asyncpg", "+psycopg"))
-        yield engine
-        engine.dispose()
-        command.downgrade(cfg, "base")
-
     def test_all_tables_created(self, migrated_engine: Engine) -> None:
         tables = set(inspect(migrated_engine).get_table_names())
         assert EXPECTED_TABLES <= tables
