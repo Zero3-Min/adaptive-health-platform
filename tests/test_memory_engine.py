@@ -203,7 +203,9 @@ class TestBuildContext:
         engine_.add_insight(user_id, "protein intake after workout helps", "nutrition")
         context = engine_.build_context(user_id, query="protein intake nutrition")
         insights_section = context.split("## Relevant Insights")[1].split("## Active")[0]
-        assert insights_section.strip().splitlines()[0].startswith("- [nutrition]")
+        bullets = [line for line in insights_section.splitlines() if line.startswith("- [")]
+        assert bullets, f"no insight bullets in section: {insights_section!r}"
+        assert bullets[0].startswith("- [nutrition]")
 
 
 class TestListInsights:
