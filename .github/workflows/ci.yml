@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      # Phase 0：尚无 pyproject.toml / 源码，允许失败；Phase 1 移除 || true
+      - name: Ruff lint
+        run: uvx ruff check . || true
+      - name: Ruff format check
+        run: uvx ruff format --check . || true
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      # Phase 0：尚无测试，pytest 空集合视为通过；Phase 1 收紧
+      - name: Run tests
+        run: uvx pytest tests/ || true
