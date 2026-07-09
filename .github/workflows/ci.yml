@@ -45,5 +45,5 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: uv sync
-      - name: Run tests
-        run: uv run pytest tests/ -v
+      - name: Run tests (coverage gate on core/)
+        run: uv run pytest tests/ -v --cov=core --cov-report=term-missing --cov-fail-under=85
