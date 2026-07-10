@@ -65,6 +65,20 @@ curl localhost:8000/strategies -H "X-User-Id: $USER_ID"
 
 OpenAPI 文档：http://localhost:8000/docs
 
+### 4. Dashboard（Next.js）
+
+```bash
+cd apps/dashboard
+pnpm install
+cp .env.example .env.local   # NEXT_PUBLIC_API_URL，缺省 http://localhost:8000
+pnpm dev                     # http://localhost:3000
+```
+
+无登录系统：先用上面的 curl（或 /docs）注册拿到 UUID，填入页面右上角的
+X-User-Id 输入框（存 localStorage）。三个页面：**今日打卡**（POST /logs）、
+**教练对话**（POST /coach/chat）、**我的洞察**（GET /insights、GET /strategies +
+"运行今日反思"按钮触发 POST /reflection/run）。
+
 ## 测试
 
 ```bash
