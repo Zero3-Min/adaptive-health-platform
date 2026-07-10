@@ -203,4 +203,18 @@ class TestBuildContext:
         engine_.add_insight(user_id, "protein intake after workout helps", "nutrition")
         context = engine_.build_context(user_id, query="protein intake nutrition")
         insights_section = context.split("## Relevant Insights")[1].split("## Active")[0]
-        assert insights_section.strip().splitlines()[0].startswith("- [nutrition]")
+        bullets = [line for line in insights_section.splitlines() if line.startswith("- [")]
+        assert bullets, f"no insight bullets in section: {insights_section!r}"
+        assert bullets[0].startswith("- [nutrition]")
+
+
+class TestListInsights:
+    def test_ordered_desc_and_limited(self, engine_: MemoryEngine, user_id: uuid.UUID) -> None:
+        for i in range(3):
+            engine_.add_insight(user_id, f"insight {i}", "sleep")
+        listed = engine_.list_insights(user_id, limit=2)
+        assert len(listed) == 2
+        assert engine_.list_insights(user_id)[0].content == "insight 2"  # 最新在前
+
+    def test_empty(self, engine_: MemoryEngine, user_id: uuid.UUID) -> None:
+        assert engine_.list_insights(user_id) == []
