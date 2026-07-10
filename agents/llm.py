@@ -57,6 +57,13 @@ class MockLLMClient:
         self.calls.append({"system": system, "user_message": user_message})
         if self._canned is not None:
             return self._canned
+        if "Respond with ONLY a JSON object" in system:
+            # Reflection 等要求严格 JSON 的调用：返回可解析的占位产出
+            return (
+                '{"insights": [{"content": "[mock] placeholder insight — set '
+                'ANTHROPIC_API_KEY for real analysis", "category": "habit", '
+                '"confidence": 0.1}], "strategy_suggestions": []}'
+            )
         return (
             "[mock response] No ANTHROPIC_API_KEY configured; this is a deterministic "
             "placeholder answer for development and testing."

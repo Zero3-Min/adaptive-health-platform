@@ -189,3 +189,21 @@ class TestReflectionAgent:
         agent = ReflectionAgent(memory, llm=MockLLMClient(canned_response="not json at all"))
         with pytest.raises(ValueError):
             agent.reflect(seeded_user, TODAY)
+
+
+@requires_db
+class TestMockModeEndToEnd:
+    """无 API Key 的 mock 模式下，反思全流程必须可运行（回归：曾返回 502）。"""
+
+    def test_reflect_runs_without_api_key(
+        self, memory: MemoryEngine, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        memory.append_daily_log(user_id, TODAY, {"mood": 5, "sleep_hours": 6.0})
+        agent = ReflectionAgent(memory)  # 自动解析为 mock
+        assert agent.mocked is True
+        report = agent.reflect(user_id, TODAY)
+        assert report.mocked is True
+        assert len(report.insights) == 1
+        assert "[mock]" in report.insights[0].content
+        assert report.strategies == []
