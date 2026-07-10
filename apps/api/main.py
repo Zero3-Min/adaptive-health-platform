@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from datetime import date as date_type
 
+import os
+
 from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from apps.api import schemas
 from apps.api.deps import Coach, CurrentUser, Memory, Reflection, Users
@@ -23,6 +26,14 @@ app = FastAPI(
     title="Adaptive Health Intelligence Platform",
     description="Health Operating System MVP API（鉴权为 MVP 占位：X-User-Id header）",
     version="0.1.0",
+)
+
+# Dashboard（Next.js dev server）跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
