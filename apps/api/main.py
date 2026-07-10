@@ -6,9 +6,8 @@ OpenAPI 文档：/docs
 
 from __future__ import annotations
 
-from datetime import date as date_type
-
 import os
+from datetime import date as date_type
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
