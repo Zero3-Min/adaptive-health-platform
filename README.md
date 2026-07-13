@@ -1,7 +1,35 @@
 # Adaptive Health Intelligence Platform
 
-可持续学习、持续个性化、持续演进的 Health Operating System。架构与规范见
-[CLAUDE.md](CLAUDE.md) 与 [docs/architecture/](docs/architecture/)。
+可持续学习、持续个性化、**持续自我演进**的 Health Operating System——不是聊天机器人，
+不是卡路里追踪器。架构与规范见 [CLAUDE.md](CLAUDE.md) 与 [docs/architecture/](docs/architecture/)。
+
+**为什么它不是又一个 GPT 套壳健身 bot：**
+
+- 🧠 **五层记忆**（Profile / Timeline / Insights / Strategy / Evolution）：每条建议可追溯到
+  用户自己的数据，高层结论必须引用低层证据（pgvector 语义检索）
+- 🔁 **教练-复盘双 Agent**：Coach 只读记忆给建议；Reflection 周期分析数据、把洞察和策略
+  调整写回记忆，供下一次 Coach 消费——系统随用户数据自然变聪明
+- 🧪 **自我优化闭环（Evolution Harness）**：系统在固定基准场景上给自己的教练质量打分，
+  自动试验 prompt 规则、只保留提分的改动，并把每次采纳的理由记入演进日志——
+  可复现、可审查、可回滚
+- 🔌 **多 LLM provider**：Anthropic Claude / 火山方舟（豆包、DeepSeek、GLM），按 Agent
+  角色配不同模型；无 key 时全链路 mock 可跑
+- ✅ **132 项测试**、core 层覆盖率 99%+、类型注解 100%（mypy strict）
+
+## 自我优化闭环
+
+```bash
+# 基线：在 5 个内置基准场景（膝伤、失眠、新手、平台期、过度训练）上给 Coach 打分
+DATABASE_URL=... uv run python -m evolution.harness
+
+# 自动调优：找最弱维度 → 试验针对性规则 → 提分则采纳并留痕
+DATABASE_URL=... uv run python -m evolution.harness --optimize
+```
+
+评分维度：**具体性**（有数字，不空谈）/ **个性化**（引用用户自己的数据）/
+**安全性**（绝不违背健康限制）/ **可执行性**（给出能立刻开始的步骤）。
+采纳的规则落在 `evolution/rules/adopted.json`（随仓库版本化），每次采纳的
+前后分数与理由写入 `evolution_logs`（Layer 5）——自我优化的每一步都可解释。
 
 ## 本地运行
 

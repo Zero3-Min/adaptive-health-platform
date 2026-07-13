@@ -34,18 +34,34 @@ class CoachAgent:
     无 API Key 时自动使用 mock 客户端（resolve_llm_client）。
     """
 
-    def __init__(self, memory: MemoryEngine, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        memory: MemoryEngine,
+        llm: LLMClient | None = None,
+        extra_rules: list[str] | None = None,
+    ) -> None:
         self._memory = memory
         if llm is not None:
             self._llm = llm
             self.mocked = llm.name == "mock"
         else:
             self._llm, self.mocked = resolve_llm_client("coach")
+        if extra_rules is not None:
+            self._rules = list(extra_rules)
+        else:
+            # evolution 闭环沉淀的规则（evolution/rules/adopted.json）
+            from evolution.rules.store import RuleStore
+
+            self._rules = RuleStore().load()
 
     def build_system_prompt(self, user_id: uuid.UUID, message: str) -> str:
-        """组装 system prompt：完整用户上下文 + 回复规则。"""
+        """组装 system prompt：完整用户上下文 + 回复规则 + 演进沉淀的规则。"""
         context = self._memory.build_context(user_id, query=message)
-        return SYSTEM_PROMPT_TEMPLATE.format(context=context)
+        prompt = SYSTEM_PROMPT_TEMPLATE.format(context=context)
+        if self._rules:
+            learned = "\n".join(f"- {rule}" for rule in self._rules)
+            prompt += f"\nLearned coaching rules (adopted by the evolution harness):\n{learned}\n"
+        return prompt
 
     def advise(self, user_id: uuid.UUID, message: str) -> str:
         """回答用户消息（如"今天该练什么？"），返回个性化建议文本。"""
