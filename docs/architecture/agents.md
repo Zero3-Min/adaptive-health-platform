@@ -28,11 +28,14 @@ LLM 调用经由共享的 `agents/llm.py` 抽象（模型 `claude-sonnet-4-6`，
 4. **Layer 5 不进 Agent 上下文。** 两个 Agent 都看不到 evolution_logs——那是系统对自身的
    记忆，由 evolution 模块消费。
 
-## Mock 模式
+## Provider 与 Mock 模式
 
-`resolve_llm_client()`：`ANTHROPIC_API_KEY` 存在 → `AnthropicLLMClient`（真实 Messages API）；
-否则 → `MockLLMClient`（记录调用、返回 canned/占位回复）。测试全部注入 mock，不发真实请求。
-Agent 构造函数也接受显式 `llm=` 注入，便于单测精确控制"模型输出"。
+`resolve_llm_client(role)`：`LLM_PROVIDER=anthropic|ark` 显式指定；未指定时按
+`ANTHROPIC_API_KEY` → `ARK_API_KEY` → `MockLLMClient` 自动解析。火山方舟（Ark，OpenAI
+兼容接口）按 Agent 角色选模型：Coach 用 `ARK_MODEL_COACH`（建议对话质量强的模型），
+Reflection 用 `ARK_MODEL_REFLECTION`（建议结构化/推理强的模型），兜底 `ARK_MODEL`。
+测试全部注入 mock，不发真实请求。Agent 构造函数也接受显式 `llm=` 注入，
+便于单测精确控制"模型输出"。
 
 ## 数据流
 

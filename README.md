@@ -15,11 +15,21 @@ docker compose up --build -d
 - `postgres`：pgvector/pgvector:pg16（端口 5432）
 - `api`：FastAPI（端口 8000），容器启动时自动执行 `alembic upgrade head` 迁移
 
-可选环境变量（不设置则 Agent 走 mock 模式，接口照常可用）：
+可选环境变量（不设置则 Agent 走 mock 模式，接口照常可用）。支持两个 LLM provider：
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-... VOYAGE_API_KEY=... docker compose up --build -d
+# 方案 A：Anthropic
+ANTHROPIC_API_KEY=sk-ant-... docker compose up --build -d
+
+# 方案 B：火山方舟（模型填方舟推理接入点 ep-xxx；按 Agent 角色分配）
+ARK_API_KEY=... \
+ARK_MODEL_COACH=ep-...      # 对话质量强的模型（Coach）\
+ARK_MODEL_REFLECTION=ep-... # 结构化/推理强的模型（Reflection）\
+docker compose up --build -d
 ```
+
+配好 key 后可用 `uv run python scripts/verify_llm.py` 做一次真实连通性验证
+（对两个角色各发一条真实请求，Reflection 会校验 JSON 输出合规）。
 
 ### 2. 手动迁移（不用 compose 里的 api 服务时）
 

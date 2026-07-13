@@ -40,7 +40,7 @@ class CoachAgent:
             self._llm = llm
             self.mocked = llm.name == "mock"
         else:
-            self._llm, self.mocked = resolve_llm_client()
+            self._llm, self.mocked = resolve_llm_client("coach")
 
     def build_system_prompt(self, user_id: uuid.UUID, message: str) -> str:
         """组装 system prompt：完整用户上下文 + 回复规则。"""

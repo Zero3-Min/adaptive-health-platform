@@ -1,15 +1,22 @@
-"""LLM 客户端抽象：Anthropic Messages API + 无网络/无 Key 时的 mock 实现。
+"""LLM 客户端抽象：Anthropic / 火山方舟（Ark）+ 无 Key 时的 mock 降级。
 
-两个 Agent 共用。ANTHROPIC_API_KEY 未设置时自动降级为 MockLLMClient，
-保证测试与离线开发可用（不发任何真实请求）。
+两个 Agent 共用。provider 选择见 resolve_llm_client：
+- LLM_PROVIDER=anthropic|ark 显式指定；
+- 未指定时按 ANTHROPIC_API_KEY → ARK_API_KEY → mock 自动解析。
+方舟按 Agent 角色选模型（ARK_MODEL_COACH / ARK_MODEL_REFLECTION，兜底 ARK_MODEL）。
 """
 
 from __future__ import annotations
 
 import os
-from typing import Protocol
+from typing import Literal, Protocol
+
+import httpx
 
 MODEL_ID = "claude-sonnet-4-6"
+ARK_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
+
+Role = Literal["coach", "reflection"]
 
 
 class LLMClient(Protocol):
@@ -21,7 +28,7 @@ class LLMClient(Protocol):
 
 
 class AnthropicLLMClient:
-    """真实实现：调用 Anthropic Messages API（模型 claude-sonnet-4-6）。"""
+    """Anthropic Messages API（模型 claude-sonnet-4-6）。"""
 
     name = f"anthropic:{MODEL_ID}"
 
@@ -41,8 +48,47 @@ class AnthropicLLMClient:
         return "".join(block.text for block in response.content if block.type == "text")
 
 
+class ArkLLMClient:
+    """火山方舟 Chat Completions（OpenAI 兼容格式）。
+
+    model 为方舟模型 ID 或推理接入点 ID（ep-xxx）；
+    base_url 可经 ARK_BASE_URL 覆盖（默认华北 cn-beijing）。
+    """
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        base_url: str = ARK_DEFAULT_BASE_URL,
+        timeout_s: float = 60.0,
+    ) -> None:
+        self.name = f"ark:{model}"
+        self._api_key = api_key
+        self._model = model
+        self._url = f"{base_url.rstrip('/')}/chat/completions"
+        self._timeout_s = timeout_s
+
+    def complete(self, system: str, user_message: str, max_tokens: int = 2048) -> str:
+        response = httpx.post(
+            self._url,
+            headers={"Authorization": f"Bearer {self._api_key}"},
+            json={
+                "model": self._model,
+                "max_tokens": max_tokens,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_message},
+                ],
+            },
+            timeout=self._timeout_s,
+        )
+        response.raise_for_status()
+        content: str = response.json()["choices"][0]["message"]["content"]
+        return content
+
+
 class MockLLMClient:
-    """Mock 实现：无网络/无 API Key 时使用，返回确定性的占位回复。
+    """Mock 实现：无 API Key 时使用，返回确定性的占位回复。
 
     通过构造函数注入 canned_response 可让测试精确控制"模型输出"。
     """
@@ -60,18 +106,58 @@ class MockLLMClient:
         if "Respond with ONLY a JSON object" in system:
             # Reflection 等要求严格 JSON 的调用：返回可解析的占位产出
             return (
-                '{"insights": [{"content": "[mock] placeholder insight — set '
-                'ANTHROPIC_API_KEY for real analysis", "category": "habit", '
+                '{"insights": [{"content": "[mock] placeholder insight — configure '
+                'an LLM provider for real analysis", "category": "habit", '
                 '"confidence": 0.1}], "strategy_suggestions": []}'
             )
         return (
-            "[mock response] No ANTHROPIC_API_KEY configured; this is a deterministic "
+            "[mock response] No LLM API key configured; this is a deterministic "
             "placeholder answer for development and testing."
         )
 
 
-def resolve_llm_client() -> tuple[LLMClient, bool]:
-    """返回 (client, mocked)：有 ANTHROPIC_API_KEY 用真实 API，否则 mock。"""
-    if os.environ.get("ANTHROPIC_API_KEY"):
+def _resolve_ark_model(role: Role) -> str:
+    """按 Agent 角色取模型：ARK_MODEL_<ROLE> 优先，兜底 ARK_MODEL。"""
+    model = os.environ.get(f"ARK_MODEL_{role.upper()}") or os.environ.get("ARK_MODEL")
+    if not model:
+        raise ValueError(
+            "ARK_API_KEY is set but no model configured: "
+            f"set ARK_MODEL_{role.upper()} or ARK_MODEL (an ep-... endpoint id)"
+        )
+    return model
+
+
+def resolve_llm_client(role: Role = "coach") -> tuple[LLMClient, bool]:
+    """返回 (client, mocked)。
+
+    - LLM_PROVIDER=anthropic|ark 显式指定 provider（缺相应 key 则报错）；
+    - 未指定时：ANTHROPIC_API_KEY → ARK_API_KEY → mock 降级。
+    """
+    provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
+    ark_key = os.environ.get("ARK_API_KEY")
+
+    if provider == "anthropic":
+        if not anthropic_key:
+            raise ValueError("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set")
         return AnthropicLLMClient(), False
+    if provider == "ark":
+        if not ark_key:
+            raise ValueError("LLM_PROVIDER=ark but ARK_API_KEY is not set")
+        return _build_ark_client(ark_key, role), False
+    if provider:
+        raise ValueError(f"unknown LLM_PROVIDER: {provider!r} (expected 'anthropic' or 'ark')")
+
+    if anthropic_key:
+        return AnthropicLLMClient(), False
+    if ark_key:
+        return _build_ark_client(ark_key, role), False
     return MockLLMClient(), True
+
+
+def _build_ark_client(api_key: str, role: Role) -> ArkLLMClient:
+    return ArkLLMClient(
+        api_key=api_key,
+        model=_resolve_ark_model(role),
+        base_url=os.environ.get("ARK_BASE_URL", ARK_DEFAULT_BASE_URL),
+    )

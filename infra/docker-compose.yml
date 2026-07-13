@@ -23,8 +23,13 @@ services:
     container_name: health-platform-api
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@postgres:5432/health_platform
-      # 可选：设置后 Agent 走真实 Anthropic API，否则为 mock 模式
+      # 可选：任配一组后 Agent 走真实 LLM，否则为 mock 模式
+      LLM_PROVIDER: ${LLM_PROVIDER:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ARK_API_KEY: ${ARK_API_KEY:-}
+      ARK_MODEL_COACH: ${ARK_MODEL_COACH:-}
+      ARK_MODEL_REFLECTION: ${ARK_MODEL_REFLECTION:-}
+      ARK_MODEL: ${ARK_MODEL:-}
       VOYAGE_API_KEY: ${VOYAGE_API_KEY:-}
     ports:
       - "8000:8000"

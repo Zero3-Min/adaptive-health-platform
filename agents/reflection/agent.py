@@ -89,7 +89,7 @@ class ReflectionAgent:
             self._llm = llm
             self.mocked = llm.name == "mock"
         else:
-            self._llm, self.mocked = resolve_llm_client()
+            self._llm, self.mocked = resolve_llm_client("reflection")
 
     def build_analysis_input(self, user_id: uuid.UUID, date: date_type) -> str:
         """组装分析素材：当天日志 + 近 7 天 Timeline + 当前策略。"""
