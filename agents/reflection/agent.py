@@ -83,13 +83,38 @@ class ReflectionAgent:
     - 建议的策略调整写入 Layer 4（strategies）并在 Layer 5 记录 reason。
     """
 
-    def __init__(self, memory: MemoryEngine, llm: LLMClient | None = None) -> None:
+    def __init__(
+        self,
+        memory: MemoryEngine,
+        llm: LLMClient | None = None,
+        extra_rules: list[str] | None = None,
+    ) -> None:
         self._memory = memory
         if llm is not None:
             self._llm = llm
             self.mocked = llm.name == "mock"
         else:
             self._llm, self.mocked = resolve_llm_client("reflection")
+        if extra_rules is not None:
+            self._rules = list(extra_rules)
+        else:
+            # evolution 闭环沉淀的规则（evolution/rules/reflection_adopted.json）
+            from evolution.rules.store import RuleStore, reflection_rules_path
+
+            self._rules = RuleStore(path=reflection_rules_path()).load()
+
+    def build_system_prompt(self) -> str:
+        """基础分析 prompt + 演进沉淀的规则（保持 JSON-only 要求不变）。"""
+        prompt = SYSTEM_PROMPT
+        if self._rules:
+            learned = "\n".join(f"- {rule}" for rule in self._rules)
+            prompt += f"\nAdditional analysis rules (adopted by the evolution harness):\n{learned}"
+        return prompt
+
+    def generate_analysis(self, user_id: uuid.UUID, date: date_type) -> str:
+        """只生成原始分析回复，不写记忆——供 harness 评分使用。"""
+        analysis_input = self.build_analysis_input(user_id, date)
+        return self._llm.complete(system=self.build_system_prompt(), user_message=analysis_input)
 
     def build_analysis_input(self, user_id: uuid.UUID, date: date_type) -> str:
         """组装分析素材：当天日志 + 近 7 天 Timeline + 当前策略。"""
@@ -113,8 +138,7 @@ class ReflectionAgent:
 
     def reflect(self, user_id: uuid.UUID, date: date_type) -> ReflectionReport:
         """执行复盘并把产出写回记忆，返回写入结果。"""
-        analysis_input = self.build_analysis_input(user_id, date)
-        reply = self._llm.complete(system=SYSTEM_PROMPT, user_message=analysis_input)
+        reply = self.generate_analysis(user_id, date)
         output = _ReflectionOutput.model_validate(_extract_json(reply))
 
         written_insights = [

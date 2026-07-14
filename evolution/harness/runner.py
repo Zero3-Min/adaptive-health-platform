@@ -46,6 +46,12 @@ class HarnessReport(BaseModel):
         dim = min(means, key=lambda d: means[d])
         return dim, means[dim]
 
+    def weak_replies(self, dimension: str, limit: int = 3) -> list[str]:
+        """该维度得分最低的回复样例，供 LLM 规则生成器参考。"""
+        dim = Dimension(dimension)
+        ordered = sorted(self.results, key=lambda r: r.evaluation.scores[dim])
+        return [r.reply for r in ordered[:limit]]
+
     def summary(self) -> str:
         lines = [f"harness total: {self.total:.3f}  (scenarios: {len(self.results)})"]
         for dim, mean in self.dimension_means().items():

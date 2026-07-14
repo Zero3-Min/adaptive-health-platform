@@ -11,7 +11,14 @@ import os
 from pathlib import Path
 
 DEFAULT_RULES_PATH = Path(__file__).parent / "adopted.json"
+DEFAULT_REFLECTION_RULES_PATH = Path(__file__).parent / "reflection_adopted.json"
 RULES_PATH_ENV = "COACH_RULES_PATH"
+REFLECTION_RULES_PATH_ENV = "REFLECTION_RULES_PATH"
+
+
+def reflection_rules_path() -> Path:
+    env_path = os.environ.get(REFLECTION_RULES_PATH_ENV)
+    return Path(env_path) if env_path else DEFAULT_REFLECTION_RULES_PATH
 
 
 class RuleStore:
