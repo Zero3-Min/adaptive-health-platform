@@ -41,6 +41,29 @@ export interface DailyLogPayload {
   recovery_note?: string;
 }
 
+export interface DailyLog extends DailyLogPayload {
+  id: string;
+  user_id: string;
+}
+
+export interface Profile {
+  age: number | null;
+  sex: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  goal: string | null;
+  constraints: Record<string, unknown> | null;
+}
+
+export interface ProfilePayload {
+  age?: number;
+  sex?: string;
+  height_cm?: number;
+  weight_kg?: number;
+  goal?: string;
+  constraints?: Record<string, unknown>;
+}
+
 export interface Insight {
   id: string;
   content: string;
@@ -69,12 +92,30 @@ export interface ReflectionResult {
   mocked: boolean;
 }
 
+export interface User {
+  id: string;
+  email: string;
+}
+
 export const api = {
+  register: (email: string) =>
+    request<User>("/users", "", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+  getProfile: (userId: string) => request<Profile>("/profile", userId),
+  updateProfile: (userId: string, payload: ProfilePayload) =>
+    request<Profile>("/profile", userId, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   createLog: (userId: string, payload: DailyLogPayload) =>
-    request<DailyLogPayload>("/logs", userId, {
+    request<DailyLog>("/logs", userId, {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  getLogs: (userId: string, days = 7) =>
+    request<DailyLog[]>(`/logs?days=${days}`, userId),
   coachChat: (userId: string, message: string) =>
     request<CoachReply>("/coach/chat", userId, {
       method: "POST",
