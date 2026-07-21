@@ -253,7 +253,7 @@ class TestCoachGracefulDegradation:
         self,
         client: TestClient,
         auth: dict[str, str],
-        session_factory: "sessionmaker[Session]",
+        session_factory: sessionmaker[Session],
     ) -> None:
         from apps.api.deps import get_coach_agent
         from apps.api.main import app
