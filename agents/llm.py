@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import os
+import time
 from typing import Literal, Protocol
 
 import httpx
@@ -61,30 +62,48 @@ class ArkLLMClient:
         model: str,
         base_url: str = ARK_DEFAULT_BASE_URL,
         timeout_s: float = 60.0,
+        max_retries: int = 2,
     ) -> None:
         self.name = f"ark:{model}"
         self._api_key = api_key
         self._model = model
         self._url = f"{base_url.rstrip('/')}/chat/completions"
         self._timeout_s = timeout_s
+        self._max_retries = max_retries
 
     def complete(self, system: str, user_message: str, max_tokens: int = 2048) -> str:
-        response = httpx.post(
-            self._url,
-            headers={"Authorization": f"Bearer {self._api_key}"},
-            json={
-                "model": self._model,
-                "max_tokens": max_tokens,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_message},
-                ],
-            },
-            timeout=self._timeout_s,
-        )
-        response.raise_for_status()
-        content: str = response.json()["choices"][0]["message"]["content"]
-        return content
+        payload = {
+            "model": self._model,
+            "max_tokens": max_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_message},
+            ],
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        last_exc: Exception | None = None
+        # 瞬时错误（超时/连接失败/429/5xx）重试，指数退避；4xx（除 429）直接抛出
+        for attempt in range(self._max_retries + 1):
+            try:
+                response = httpx.post(
+                    self._url, headers=headers, json=payload, timeout=self._timeout_s
+                )
+                if response.status_code == 429 or response.status_code >= 500:
+                    response.raise_for_status()
+                response.raise_for_status()
+                content: str = response.json()["choices"][0]["message"]["content"]
+                return content
+            except (httpx.TimeoutException, httpx.TransportError) as exc:
+                last_exc = exc
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 429 or exc.response.status_code >= 500:
+                    last_exc = exc
+                else:
+                    raise  # 4xx（鉴权/模型错误等）不重试
+            if attempt < self._max_retries:
+                time.sleep(2**attempt)  # 1s, 2s
+        assert last_exc is not None
+        raise last_exc
 
 
 class MockLLMClient:

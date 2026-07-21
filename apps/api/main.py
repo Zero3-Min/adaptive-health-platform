@@ -6,15 +6,30 @@ OpenAPI 文档：/docs
 
 from __future__ import annotations
 
+import logging
 import os
+import time
+import uuid
+from collections.abc import Awaitable, Callable
 from datetime import date as date_type
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from apps.api import schemas
-from apps.api.deps import Coach, CurrentUser, Memory, Reflection, Users
+from apps.api.deps import (
+    Coach,
+    CurrentUser,
+    Memory,
+    Reflection,
+    SessionFactory,
+    Users,
+)
 from core.workflow.users import EmailAlreadyRegisteredError
+
+logger = logging.getLogger("health_platform.api")
 
 # MVP 不做定时任务。上线定时反思时接入 APScheduler：
 #   from apscheduler.schedulers.background import BackgroundScheduler
@@ -33,6 +48,41 @@ app.add_middleware(
     allow_origins=os.environ.get("CORS_ORIGINS", "http://localhost:3000").split(","),
     allow_methods=["*"],
     allow_headers=["*"],
+)
+
+
+@app.middleware("http")
+async def add_request_context(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """为每个请求生成 request_id、记录耗时；未捕获异常统一转为 500 JSON 而非裸栈。"""
+    request_id = uuid.uuid4().hex[:12]
+    start = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:  # noqa: BLE001 - 兜底：任何未处理异常都返回结构化 500
+        elapsed = (time.perf_counter() - start) * 1000
+        logger.exception("unhandled error req=%s %s %s", request_id, request.method, request.url)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "internal server error", "request_id": request_id},
+            headers={"X-Request-Id": request_id},
+        )
+    elapsed = (time.perf_counter() - start) * 1000
+    response.headers["X-Request-Id"] = request_id
+    logger.info(
+        "req=%s %s %s -> %s %.1fms",
+        request_id,
+        request.method,
+        request.url.path,
+        response.status_code,
+        elapsed,
+    )
+    return response
+
+
+COACH_UNAVAILABLE_REPLY = (
+    "教练暂时连接不上（模型服务超时或不可用）。你的数据已安全保存，稍后再试即可。"
 )
 
 
@@ -90,8 +140,18 @@ def get_logs(
 def coach_chat(
     body: schemas.CoachChatRequest, user: CurrentUser, coach: Coach
 ) -> schemas.CoachChatResponse:
-    """与 Coach Agent 对话，获得基于五层记忆的个性化建议。"""
-    reply = coach.advise(user.id, body.message)
+    """与 Coach Agent 对话，获得基于五层记忆的个性化建议。
+
+    模型服务不可用（超时/网络错误）时优雅降级：返回 200 + 提示语 + degraded 标记，
+    而不是把 500 抛给用户——用户的打卡数据不受影响。
+    """
+    try:
+        reply = coach.advise(user.id, body.message)
+    except Exception:  # noqa: BLE001 - LLM 侧任何失败都降级为友好提示
+        logger.warning("coach LLM call failed for user=%s", user.id, exc_info=True)
+        return schemas.CoachChatResponse(
+            reply=COACH_UNAVAILABLE_REPLY, mocked=coach.mocked, degraded=True
+        )
     return schemas.CoachChatResponse(reply=reply, mocked=coach.mocked)
 
 
@@ -105,6 +165,9 @@ def run_reflection(
         report = reflection.reflect(user.id, target_date)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=f"reflection output invalid: {exc}") from exc
+    except Exception as exc:  # noqa: BLE001 - LLM 网络错误等，返回 503 让前端可重试
+        logger.warning("reflection LLM call failed for user=%s", user.id, exc_info=True)
+        raise HTTPException(status_code=503, detail="reflection model unavailable") from exc
     return schemas.ReflectionRunResponse(
         insights=[schemas.InsightResponse.model_validate(i.model_dump()) for i in report.insights],
         strategies=report.strategies,
@@ -128,3 +191,38 @@ def list_strategies(user: CurrentUser, memory: Memory) -> list[schemas.StrategyR
     """查看当前生效策略（Layer 4）。"""
     strategies = memory.get_active_strategies(user.id)
     return [schemas.StrategyResponse.model_validate(s.model_dump()) for s in strategies]
+
+
+@app.get("/evolution", response_model=list[schemas.EvolutionLogResponse], tags=["memory"])
+def list_evolution(
+    user: CurrentUser,
+    memory: Memory,
+    limit: int = Query(default=100, ge=1, le=500),
+) -> list[schemas.EvolutionLogResponse]:
+    """查看演进日志（Layer 5）——系统自我修改的可审计记录：洞察提炼、策略调整、
+    规则采纳、embedding 降级等。返回该用户相关记录 + 系统级记录，时间倒序。"""
+    logs = memory.list_evolution(user.id, limit=limit)
+    return [schemas.EvolutionLogResponse.model_validate(log.model_dump()) for log in logs]
+
+
+@app.get("/health", response_model=schemas.HealthResponse, tags=["ops"])
+def health(session_factory: SessionFactory) -> schemas.HealthResponse:
+    """存活探针：校验数据库连通性并报告当前 LLM provider。"""
+    from agents.llm import resolve_llm_client
+
+    try:
+        with session_factory() as session:
+            session.execute(text("SELECT 1"))
+        db_status = "ok"
+    except Exception:  # noqa: BLE001 - 探针需报告降级而非抛出
+        logger.exception("health check: database unreachable")
+        db_status = "unreachable"
+    try:
+        client, mocked = resolve_llm_client("coach")
+        provider, llm_mocked = client.name, mocked
+    except Exception:  # noqa: BLE001 - 配置不完整时也要能报告
+        provider, llm_mocked = "misconfigured", False
+    status = "ok" if db_status == "ok" else "degraded"
+    return schemas.HealthResponse(
+        status=status, database=db_status, llm_provider=provider, llm_mocked=llm_mocked
+    )

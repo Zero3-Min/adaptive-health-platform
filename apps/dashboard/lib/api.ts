@@ -97,6 +97,15 @@ export interface User {
   email: string;
 }
 
+export interface EvolutionLog {
+  id: string;
+  change_type: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  reason: string;
+  created_at: string | null;
+}
+
 export const api = {
   register: (email: string) =>
     request<User>("/users", "", {
@@ -129,4 +138,6 @@ export const api = {
       method: "POST",
       body: JSON.stringify({}),
     }),
+  listEvolution: (userId: string) =>
+    request<EvolutionLog[]>("/evolution", userId),
 };

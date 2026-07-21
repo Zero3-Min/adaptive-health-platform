@@ -63,20 +63,19 @@ export default function DailyLogPage() {
     }
   }
 
-  const field =
-    "w-full rounded-md border border-neutral-300 px-3 py-2 text-sm focus:border-neutral-500 focus:outline-none";
-  const label = "mb-1 block text-sm font-medium text-neutral-700";
+  const field = "input";
+  const label = "mb-1 block mb-1 block text-sm font-medium";
 
   return (
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold">今日打卡</h1>
-        <p className="mt-1 text-sm text-neutral-500">
+        <p className="mt-1 text-sm muted">
           记录越多，教练越懂你——每条建议都会引用你自己的数据。
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-neutral-200 bg-white p-5">
+      <form onSubmit={handleSubmit} className="card space-y-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label className={label}>日期</label>
@@ -101,15 +100,15 @@ export default function DailyLogPage() {
                   aria-label={`情绪 ${value} 分`}
                   className={
                     selected
-                      ? "rounded-lg border-2 border-neutral-900 bg-neutral-100 px-2 py-1 text-lg"
-                      : "rounded-lg border border-neutral-200 px-2 py-1 text-lg opacity-60 hover:opacity-100"
+                      ? "rounded-lg border-2 surface-2 px-2 py-1 text-lg [border-color:var(--accent)]"
+                      : "rounded-lg border px-2 py-1 text-lg opacity-50 hover:opacity-100 [border-color:var(--border)]"
                   }
                 >
                   {emoji}
                 </button>
               );
             })}
-            {mood !== null && <span className="self-center text-sm text-neutral-500">{mood}/10</span>}
+            {mood !== null && <span className="self-center text-sm muted">{mood}/10</span>}
           </div>
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -135,12 +134,12 @@ export default function DailyLogPage() {
         <button
           type="submit"
           disabled={busy}
-          className="rounded-md bg-neutral-900 px-5 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+          className="btn-primary"
         >
           {busy ? "提交中…" : "提交打卡"}
         </button>
-        {status && <p className="text-sm text-green-700">{status}</p>}
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {status && <p className="text-sm text-green-500">{status}</p>}
+        {error && <p className="text-sm text-red-500">{error}</p>}
       </form>
 
       <TrendCharts logs={logs} />

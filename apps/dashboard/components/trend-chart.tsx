@@ -46,11 +46,11 @@ function MiniBars({ metric, logs }: { metric: Metric; logs: DailyLog[] }) {
   const lastIdx = values.reduce<number>((acc, v, i) => (v !== null ? i : acc), -1);
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-white p-3">
+    <div className="card p-3">
       <div className="mb-2 flex items-baseline justify-between">
-        <span className="text-xs font-medium text-neutral-500">{metric.label}</span>
+        <span className="text-xs font-medium muted">{metric.label}</span>
         {lastIdx >= 0 && (
-          <span className="text-sm font-semibold text-neutral-800">
+          <span className="text-sm font-semibold [color:var(--text)]">
             {metric.format(values[lastIdx] as number)}
           </span>
         )}
@@ -66,7 +66,7 @@ function MiniBars({ metric, logs }: { metric: Metric; logs: DailyLog[] }) {
                 width={barW}
                 height={2}
                 rx={1}
-                fill="#e5e5e5"
+                fill="var(--border)"
               />
             );
           }
@@ -88,7 +88,7 @@ function MiniBars({ metric, logs }: { metric: Metric; logs: DailyLog[] }) {
           );
         })}
       </svg>
-      <div className="mt-1 flex justify-between text-[10px] text-neutral-400">
+      <div className="mt-1 flex justify-between text-[10px] muted">
         <span>{logs[0]?.date.slice(5)}</span>
         <span>{logs[logs.length - 1]?.date.slice(5)}</span>
       </div>
@@ -100,7 +100,7 @@ export function TrendCharts({ logs }: { logs: DailyLog[] }) {
   if (logs.length === 0) return null;
   return (
     <section>
-      <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+      <h2 className="mb-3 text-sm font-medium uppercase tracking-wide muted">
         近 7 天趋势
       </h2>
       <div className="grid gap-3 sm:grid-cols-3">

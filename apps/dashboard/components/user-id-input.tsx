@@ -4,13 +4,16 @@ import { useUserId } from "@/lib/user-id";
 
 export function UserIdInput() {
   const { userId, setUserId } = useUserId();
+  if (!userId) return null;
   return (
-    <input
-      value={userId}
-      onChange={(e) => setUserId(e.target.value.trim())}
-      placeholder="X-User-Id（注册返回的 UUID）"
-      className="w-72 rounded-md border border-neutral-300 px-2 py-1 font-mono text-xs focus:border-neutral-500 focus:outline-none"
-      spellCheck={false}
-    />
+    <button
+      onClick={() => {
+        if (confirm("退出当前账号？（会清除本地保存的 User ID）")) setUserId("");
+      }}
+      className="btn-ghost font-mono text-xs"
+      title={`当前用户 ${userId}\n点击退出`}
+    >
+      {userId.slice(0, 8)}… ⏻
+    </button>
   );
 }

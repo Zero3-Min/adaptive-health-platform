@@ -26,13 +26,13 @@ function CategoryBadge({ category }: { category: string }) {
 function ConfidenceBar({ value }: { value: number }) {
   return (
     <span className="inline-flex items-center gap-1.5" title={`置信度 ${value.toFixed(2)}`}>
-      <span className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-100">
+      <span className="h-1.5 w-16 overflow-hidden rounded-full surface-2">
         <span
-          className="block h-full rounded-full bg-neutral-700"
+          className="block h-full rounded-full [background:var(--accent)]"
           style={{ width: `${Math.round(value * 100)}%` }}
         />
       </span>
-      <span className="text-xs tabular-nums text-neutral-500">{value.toFixed(2)}</span>
+      <span className="text-xs tabular-nums muted">{value.toFixed(2)}</span>
     </span>
   );
 }
@@ -86,14 +86,14 @@ export default function InsightsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-xl font-semibold">我的洞察</h1>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm muted">
             反思 Agent 分析你的时间线，把发现写回记忆——下一次教练建议会用上它们。
           </p>
         </div>
         <button
           onClick={handleReflect}
           disabled={busy}
-          className="shrink-0 rounded-md bg-neutral-900 px-4 py-2 text-sm font-medium text-white hover:bg-neutral-700 disabled:opacity-50"
+          className="shrink-0 btn-primary"
         >
           {busy ? "反思中…" : "✨ 运行今日反思"}
         </button>
@@ -102,25 +102,25 @@ export default function InsightsPage() {
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide muted">
           Insights（Layer 3）
         </h2>
         {loaded && insights.length === 0 && (
-          <div className="rounded-xl border border-dashed border-neutral-300 p-8 text-center">
+          <div className="card border-dashed p-8 text-center">
             <p className="text-2xl">💡</p>
-            <p className="mt-2 text-sm text-neutral-400">
+            <p className="mt-2 text-sm muted">
               暂无洞察。打卡几天后点右上角「运行今日反思」试试。
             </p>
           </div>
         )}
         <ul className="space-y-2">
           {insights.map((insight) => (
-            <li key={insight.id} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <li key={insight.id} className="card p-4">
               <p className="text-sm leading-relaxed">{insight.content}</p>
               <div className="mt-2 flex flex-wrap items-center gap-3">
                 <CategoryBadge category={insight.category} />
                 <ConfidenceBar value={insight.confidence} />
-                <span className="text-xs text-neutral-400">来源 {insight.source}</span>
+                <span className="text-xs muted">来源 {insight.source}</span>
               </div>
             </li>
           ))}
@@ -128,18 +128,18 @@ export default function InsightsPage() {
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide text-neutral-500">
+        <h2 className="mb-3 text-sm font-medium uppercase tracking-wide muted">
           当前策略（Layer 4）
         </h2>
         {loaded && strategies.length === 0 && (
-          <p className="text-sm text-neutral-400">暂无生效策略。反思发现明确模式后会自动建立。</p>
+          <p className="text-sm muted">暂无生效策略。反思发现明确模式后会自动建立。</p>
         )}
         <ul className="grid gap-2 sm:grid-cols-2">
           {strategies.map((strategy) => (
-            <li key={strategy.id} className="rounded-xl border border-neutral-200 bg-white p-4">
+            <li key={strategy.id} className="card p-4">
               <div className="mb-1 flex items-center gap-2">
                 <CategoryBadge category={strategy.domain} />
-                <span className="text-xs text-green-600">● 生效中</span>
+                <span className="text-xs text-green-500">● 生效中</span>
               </div>
               <p className="text-sm">{strategy.content}</p>
             </li>

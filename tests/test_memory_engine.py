@@ -218,3 +218,34 @@ class TestListInsights:
 
     def test_empty(self, engine_: MemoryEngine, user_id: uuid.UUID) -> None:
         assert engine_.list_insights(user_id) == []
+
+
+class TestListEvolution:
+    def test_scoped_returns_user_and_system(
+        self, engine_: MemoryEngine, user_id: uuid.UUID
+    ) -> None:
+        engine_.log_evolution(user_id, "user_change", None, {"x": 1}, "user-level")
+        engine_.log_evolution(None, "system_change", None, {"y": 2}, "system-level")
+        other = uuid.uuid4()
+        with engine_._session_factory() as session:
+            session.add(orm.User(id=other, email=f"{other}@example.com"))
+            session.commit()
+        engine_.log_evolution(other, "other_change", None, None, "other user")
+
+        logs = engine_.list_evolution(user_id)
+        types = {log.change_type for log in logs}
+        assert "user_change" in types
+        assert "system_change" in types  # 系统级对所有用户可见
+        assert "other_change" not in types  # 他人用户级不可见
+
+    def test_desc_order_and_limit(self, engine_: MemoryEngine, user_id: uuid.UUID) -> None:
+        for i in range(4):
+            engine_.log_evolution(user_id, f"change_{i}", None, None, "r")
+        logs = engine_.list_evolution(user_id, limit=2)
+        assert len(logs) == 2
+        assert logs[0].change_type == "change_3"
+
+    def test_all_when_no_user(self, engine_: MemoryEngine, user_id: uuid.UUID) -> None:
+        engine_.log_evolution(user_id, "a", None, None, "r")
+        engine_.log_evolution(None, "b", None, None, "r")
+        assert len(engine_.list_evolution(None)) == 2

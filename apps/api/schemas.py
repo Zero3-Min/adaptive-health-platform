@@ -57,7 +57,8 @@ class CoachChatRequest(BaseModel):
 
 class CoachChatResponse(BaseModel):
     reply: str
-    mocked: bool = Field(description="true 表示无 ANTHROPIC_API_KEY，回复来自 mock 模式")
+    mocked: bool = Field(description="true 表示无 LLM key，回复来自 mock 模式")
+    degraded: bool = Field(default=False, description="true 表示模型服务不可用，返回的是降级提示")
 
 
 class ReflectionRunRequest(BaseModel):
@@ -76,3 +77,21 @@ class ReflectionRunResponse(BaseModel):
 
 class StrategyResponse(Strategy):
     pass
+
+
+class EvolutionLogResponse(BaseModel):
+    """Layer 5 演进日志——系统自我修改的可审计记录。"""
+
+    id: uuid.UUID
+    change_type: str
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    reason: str
+    created_at: datetime | None = None
+
+
+class HealthResponse(BaseModel):
+    status: str
+    database: str
+    llm_provider: str
+    llm_mocked: bool
