@@ -1,89 +1,142 @@
 # Adaptive Health Intelligence Platform
 
-可持续学习、持续个性化、持续演进的 Health Operating System。架构与规范见
-[CLAUDE.md](CLAUDE.md) 与 [docs/architecture/](docs/architecture/)。
+**A health OS that gets smarter every day — and literally optimizes itself.**
 
-## 本地运行
+[![CI](https://github.com/Zero3-Min/adaptive-health-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Zero3-Min/adaptive-health-platform/actions/workflows/ci.yml)
+[![Quality Harness](https://github.com/Zero3-Min/adaptive-health-platform/actions/workflows/harness.yml/badge.svg)](https://github.com/Zero3-Min/adaptive-health-platform/actions/workflows/harness.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](pyproject.toml)
+[![中文文档](https://img.shields.io/badge/docs-中文-red.svg)](README.zh-CN.md)
 
-### 1. 一键启动全栈后端（Postgres + API）
+Not another GPT-wrapper fitness bot. This is a **Health Operating System** built
+Data First → Memory First → Workflow First → Evolution First → **Agent Second**.
 
-```bash
-cd infra
-docker compose up --build -d
+![Demo](docs/assets/demo.gif)
+
+## Why it's different
+
+🧠 **Five-layer memory** — Profile / Daily Timeline / Insights / Strategy / Evolution.
+Every recommendation traces back to the user's own data; higher-layer conclusions must
+cite lower-layer evidence (pgvector semantic retrieval).
+
+🔁 **Coach + Reflection agent pair** — the Coach reads memory and advises (never writes);
+the Reflection agent periodically analyzes the timeline, writes insights and strategy
+adjustments back into memory — which the next Coach call consumes. The system compounds
+knowledge as the user logs data.
+
+🧪 **A self-optimization loop that actually works** — the system benchmarks its own
+coaching quality on fixed scenarios, asks an LLM to draft new prompt rules for its
+weakest dimension, keeps a rule **only if the score measurably improves**, and records
+every adoption (before/after scores + reason) in the evolution log. Reproducible,
+reviewable, revertible:
+
+```text
+$ python -m evolution.harness --optimize      # illustrative output — scores depend on your model
+self-optimization: 0.612 -> 0.847 (2 rule(s) adopted)
+  round 1: [personalization] 0.612 -> 0.771  ADOPTED
+  round 2: [specificity]    0.771 -> 0.847  ADOPTED
 ```
 
-- `postgres`：pgvector/pgvector:pg16（端口 5432）
-- `api`：FastAPI（端口 8000），容器启动时自动执行 `alembic upgrade head` 迁移
+🛡️ **Regression-gated by CI** — a scheduled GitHub Actions workflow replays the
+benchmark weekly and on every agent-related PR; if quality drops below the gate, the
+build goes red. Both agents (Coach *and* Reflection) run the same loop with their own
+rubrics.
 
-可选环境变量（不设置则 Agent 走 mock 模式，接口照常可用）：
+🔌 **Multi-provider** — Anthropic Claude or Volcano Ark (Doubao / DeepSeek / GLM), with
+**per-agent model selection** (a conversational model for coaching, a reasoning model
+for reflection). No API key? Everything runs in deterministic mock mode.
 
-```bash
-ANTHROPIC_API_KEY=sk-ant-... VOYAGE_API_KEY=... docker compose up --build -d
+✅ **147 tests, 99% core coverage, 100% type-annotated (mypy strict).**
+
+## How the self-optimization loop works
+
+```mermaid
+flowchart LR
+    A[Benchmark scenarios<br/>knee injury · sleep debt · beginner<br/>plateau · overtraining] --> B[Replay through<br/>real memory stack]
+    B --> C[Score 4 dimensions<br/>specificity · personalization<br/>safety · actionability]
+    C --> D{Weakest<br/>dimension}
+    D --> E[LLM drafts a rule<br/>fallback: curated library]
+    E --> F[Trial run]
+    F -->|score improves| G[Adopt: version-controlled<br/>rules file + evolution log]
+    F -->|no gain| H[Discard]
+    G --> B
 ```
 
-### 2. 手动迁移（不用 compose 里的 api 服务时）
+The adopted rules live in `evolution/rules/adopted.json` — a reviewable diff in your PR,
+not hidden state. Every adoption is also written to the `evolution_logs` table with the
+before/after scores and the reason, so the system's self-modification history is fully
+auditable.
+
+## Quickstart
 
 ```bash
-uv sync
+git clone https://github.com/Zero3-Min/adaptive-health-platform && cd adaptive-health-platform
+
+# Full backend (Postgres + pgvector + API) in one command
+cd infra && docker compose up --build -d
+
+# Dashboard
+cd ../apps/dashboard && pnpm install && pnpm dev   # http://localhost:3000
+```
+
+Register a user, put the returned UUID into the header field, and you have a working
+coach (mock mode without keys):
+
+```bash
+curl -X POST localhost:8000/users -H 'content-type: application/json' \
+  -d '{"email": "you@example.com"}'
+```
+
+### Bring your own LLM
+
+```bash
+# Anthropic
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# or Volcano Ark — different models per agent role
+export ARK_API_KEY=...
+export ARK_MODEL_COACH=ep-...        # conversational model
+export ARK_MODEL_REFLECTION=ep-...   # reasoning / structured-output model
+
+uv run python scripts/verify_llm.py  # one-shot connectivity + JSON-compliance check
+```
+
+### Run the self-optimization loop
+
+```bash
 DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/health_platform \
-  uv run alembic upgrade head
+  uv run python -m evolution.harness                      # baseline scorecard
+  uv run python -m evolution.harness --optimize           # let it improve itself
+  uv run python -m evolution.harness --agent reflection   # same loop, Reflection agent
 ```
 
-### 3. curl 示例
+## Architecture
 
-```bash
-# 注册（返回的 id 用作后续请求的 X-User-Id —— MVP 模拟登录）
-USER_ID=$(curl -s -X POST localhost:8000/users \
-  -H 'content-type: application/json' \
-  -d '{"email": "alice@example.com"}' | python3 -c 'import sys,json;print(json.load(sys.stdin)["id"])')
-
-# 写健康档案
-curl -X PUT localhost:8000/profile -H "X-User-Id: $USER_ID" \
-  -H 'content-type: application/json' \
-  -d '{"age": 30, "goal": "减脂 5kg", "constraints": {"injuries": ["knee"]}}'
-
-# 提交当日记录
-curl -X POST localhost:8000/logs -H "X-User-Id: $USER_ID" \
-  -H 'content-type: application/json' \
-  -d "{\"date\": \"$(date +%F)\", \"workout\": {\"type\": \"run\", \"km\": 5}, \"sleep_hours\": 7.5, \"mood\": 8, \"steps\": 9000}"
-
-# 时间线
-curl "localhost:8000/logs?days=7" -H "X-User-Id: $USER_ID"
-
-# 与 Coach 对话
-curl -X POST localhost:8000/coach/chat -H "X-User-Id: $USER_ID" \
-  -H 'content-type: application/json' -d '{"message": "今天该练什么？"}'
-
-# 手动触发当日反思
-curl -X POST localhost:8000/reflection/run -H "X-User-Id: $USER_ID" \
-  -H 'content-type: application/json' -d '{}'
-
-# 洞察与当前策略
-curl localhost:8000/insights   -H "X-User-Id: $USER_ID"
-curl localhost:8000/strategies -H "X-User-Id: $USER_ID"
+```
+apps/api          FastAPI (thin HTTP layer)     apps/dashboard   Next.js + Tailwind
+agents/coach      advises, read-only            agents/reflection analyzes, writes memory
+core/memory       five-layer memory engine      core/evaluation  deterministic rubrics
+core/workflow     deterministic pipelines       evolution/       harness · rules · loop
+database/         Alembic + pgvector schema     models/          Pydantic domain models
 ```
 
-OpenAPI 文档：http://localhost:8000/docs
+Deep dives: [architecture overview](docs/architecture/overview.md) ·
+[memory engine](docs/architecture/memory-engine.md) ·
+[agents](docs/architecture/agents.md) ·
+[ER diagram](docs/architecture/er-diagram.md) ·
+[ADRs](docs/adr/)
 
-### 4. Dashboard（Next.js）
-
-```bash
-cd apps/dashboard
-pnpm install
-cp .env.example .env.local   # NEXT_PUBLIC_API_URL，缺省 http://localhost:8000
-pnpm dev                     # http://localhost:3000
-```
-
-无登录系统：先用上面的 curl（或 /docs）注册拿到 UUID，填入页面右上角的
-X-User-Id 输入框（存 localStorage）。三个页面：**今日打卡**（POST /logs）、
-**教练对话**（POST /coach/chat）、**我的洞察**（GET /insights、GET /strategies +
-"运行今日反思"按钮触发 POST /reflection/run）。
-
-## 测试
+## Tests
 
 ```bash
-uv run pytest                       # 无 DB：跑单元测试，集成测试自动 skip
-# 集成测试（需 pgvector Postgres，如 compose 起的实例）：
+uv run pytest                    # unit tests (DB-backed tests auto-skip)
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/health_platform \
-  uv run pytest
+  uv run pytest                  # full suite: 147 tests incl. the optimization loop
 ```
+
+## Documentation in Chinese
+
+完整中文文档见 [README.zh-CN.md](README.zh-CN.md)。
+
+## License
+
+[MIT](LICENSE)

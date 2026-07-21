@@ -213,3 +213,96 @@ class TestOpenAPI:
             ("/strategies", "get"),
         ]:
             assert method in paths[path], f"{method.upper()} {path} missing from OpenAPI"
+
+
+class TestHealth:
+    def test_health_reports_ok(self, client: TestClient) -> None:
+        body = client.get("/health").json()
+        assert body["status"] == "ok"
+        assert body["database"] == "ok"
+        assert "llm_provider" in body
+
+    def test_request_id_header_present(self, client: TestClient) -> None:
+        resp = client.get("/health")
+        assert resp.headers.get("X-Request-Id")
+
+
+class TestEvolution:
+    def test_lists_reflection_and_system_logs(
+        self, client: TestClient, auth: dict[str, str]
+    ) -> None:
+        # 跑一次反思，产生策略调整的演进日志
+        client.post(
+            "/logs", headers=auth, json={"date": TODAY.isoformat(), "sleep_hours": 5.5, "mood": 4}
+        )
+        client.post("/reflection/run", headers=auth, json={})
+        logs = client.get("/evolution", headers=auth).json()
+        assert isinstance(logs, list)
+        change_types = {log["change_type"] for log in logs}
+        # 至少包含反思引起的策略调整
+        assert "strategy_adjusted_by_reflection" in change_types
+        first = logs[0]
+        assert {"id", "change_type", "reason", "created_at"} <= set(first)
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        assert client.get("/evolution").status_code == 401
+
+
+class TestCoachGracefulDegradation:
+    def test_llm_failure_returns_degraded_reply(
+        self,
+        client: TestClient,
+        auth: dict[str, str],
+        session_factory: sessionmaker[Session],
+    ) -> None:
+        from apps.api.deps import get_coach_agent
+        from apps.api.main import app
+
+        class FailingLLM:
+            name = "failing"
+
+            def complete(self, system: str, user_message: str, max_tokens: int = 2048) -> str:
+                raise RuntimeError("model timeout")
+
+        memory = MemoryEngine(session_factory, embedding_provider=HashEmbeddingProvider())
+        app.dependency_overrides[get_coach_agent] = lambda: CoachAgent(memory, llm=FailingLLM())
+        try:
+            resp = client.post("/coach/chat", headers=auth, json={"message": "今天练什么"})
+        finally:
+            app.dependency_overrides[get_coach_agent] = lambda: CoachAgent(
+                memory, llm=MockLLMClient(canned_response="mock coach advice")
+            )
+        assert resp.status_code == 200
+        assert resp.json()["degraded"] is True
+
+
+class TestStats:
+    def test_streak_and_averages(self, client: TestClient, auth: dict[str, str]) -> None:
+        from datetime import date as _date
+        from datetime import timedelta as _td
+
+        today = _date.today()
+        for i in range(3):
+            client.post(
+                "/logs",
+                headers=auth,
+                json={
+                    "date": (today - _td(days=i)).isoformat(),
+                    "sleep_hours": 7.0,
+                    "mood": 8,
+                    "steps": 9000,
+                },
+            )
+        stats = client.get("/stats", headers=auth).json()
+        assert stats["current_streak"] == 3
+        assert stats["days_logged"] == 3
+        assert stats["avg_sleep_hours"] == 7.0
+        assert stats["avg_steps"] == 9000
+
+    def test_empty_stats(self, client: TestClient, auth: dict[str, str]) -> None:
+        stats = client.get("/stats", headers=auth).json()
+        assert stats["current_streak"] == 0
+        assert stats["days_logged"] == 0
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        assert client.get("/stats").status_code == 401

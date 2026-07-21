@@ -25,8 +25,19 @@ TODAY = date.today()
 
 
 class TestLLMClientResolution:
-    def test_mock_when_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    @pytest.fixture(autouse=True)
+    def _clean_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        for var in (
+            "LLM_PROVIDER",
+            "ANTHROPIC_API_KEY",
+            "ARK_API_KEY",
+            "ARK_MODEL",
+            "ARK_MODEL_COACH",
+            "ARK_MODEL_REFLECTION",
+        ):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_mock_when_no_api_key(self) -> None:
         client, mocked = resolve_llm_client()
         assert mocked is True
         assert client.name == "mock"
@@ -37,6 +48,94 @@ class TestLLMClientResolution:
     def test_mock_returns_deterministic_text(self) -> None:
         client = MockLLMClient()
         assert client.complete("s", "u") == client.complete("s", "u")
+
+    def test_ark_selected_when_only_ark_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ARK_API_KEY", "ark-test")
+        monkeypatch.setenv("ARK_MODEL", "ep-default")
+        client, mocked = resolve_llm_client("coach")
+        assert mocked is False
+        assert client.name == "ark:ep-default"
+
+    def test_ark_role_specific_models(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ARK_API_KEY", "ark-test")
+        monkeypatch.setenv("ARK_MODEL_COACH", "ep-coach")
+        monkeypatch.setenv("ARK_MODEL_REFLECTION", "ep-reflect")
+        coach, _ = resolve_llm_client("coach")
+        reflect, _ = resolve_llm_client("reflection")
+        assert coach.name == "ark:ep-coach"
+        assert reflect.name == "ark:ep-reflect"
+
+    def test_anthropic_takes_precedence_over_ark(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("ARK_API_KEY", "ark-test")
+        monkeypatch.setenv("ARK_MODEL", "ep-x")
+        client, mocked = resolve_llm_client()
+        assert mocked is False
+        assert client.name.startswith("anthropic:")
+
+    def test_explicit_provider_ark_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "ark")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("ARK_API_KEY", "ark-test")
+        monkeypatch.setenv("ARK_MODEL", "ep-x")
+        client, _ = resolve_llm_client()
+        assert client.name == "ark:ep-x"
+
+    def test_ark_key_without_model_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ARK_API_KEY", "ark-test")
+        with pytest.raises(ValueError, match="no model configured"):
+            resolve_llm_client("coach")
+
+    def test_explicit_provider_missing_key_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "ark")
+        with pytest.raises(ValueError, match="ARK_API_KEY is not set"):
+            resolve_llm_client()
+
+    def test_unknown_provider_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "openai")
+        with pytest.raises(ValueError, match="unknown LLM_PROVIDER"):
+            resolve_llm_client()
+
+
+class TestArkLLMClient:
+    def test_complete_parses_openai_format(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import httpx
+
+        captured: dict[str, object] = {}
+
+        def fake_post(url: str, **kwargs: object) -> httpx.Response:
+            captured["url"] = url
+            captured["json"] = kwargs["json"]
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": "建议：低强度骑行 30 分钟。"}}]},
+                request=httpx.Request("POST", url),
+            )
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        from agents.llm import ArkLLMClient
+
+        client = ArkLLMClient(api_key="ark-test", model="ep-coach")
+        reply = client.complete("you are a coach", "今天该练什么？")
+
+        assert reply == "建议：低强度骑行 30 分钟。"
+        assert captured["url"] == "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+        body = captured["json"]
+        assert isinstance(body, dict)
+        assert body["model"] == "ep-coach"
+        assert body["messages"][0] == {"role": "system", "content": "you are a coach"}
+
+    def test_http_error_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import httpx
+
+        def fake_post(url: str, **kwargs: object) -> httpx.Response:
+            return httpx.Response(401, json={}, request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        from agents.llm import ArkLLMClient
+
+        with pytest.raises(httpx.HTTPStatusError):
+            ArkLLMClient(api_key="bad", model="ep-x").complete("s", "u")
 
 
 class TestExtractJson:
@@ -189,3 +288,23 @@ class TestReflectionAgent:
         agent = ReflectionAgent(memory, llm=MockLLMClient(canned_response="not json at all"))
         with pytest.raises(ValueError):
             agent.reflect(seeded_user, TODAY)
+
+
+@requires_db
+class TestMockModeEndToEnd:
+    """无 API Key 的 mock 模式下，反思全流程必须可运行（回归：曾返回 502）。"""
+
+    def test_reflect_runs_without_api_key(
+        self, memory: MemoryEngine, user_id: uuid.UUID, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("ARK_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        memory.append_daily_log(user_id, TODAY, {"mood": 5, "sleep_hours": 6.0})
+        agent = ReflectionAgent(memory)  # 自动解析为 mock
+        assert agent.mocked is True
+        report = agent.reflect(user_id, TODAY)
+        assert report.mocked is True
+        assert len(report.insights) == 1
+        assert "[mock]" in report.insights[0].content
+        assert report.strategies == []

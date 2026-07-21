@@ -1,1 +1,93 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* 主题 token：浅色为默认，深色由 [data-theme=dark] 覆盖（系统偏好在 layout 里注入） */
+:root {
+  --bg: #fafaf9;
+  --surface: #ffffff;
+  --surface-2: #f5f5f4;
+  --border: #e7e5e4;
+  --text: #1c1917;
+  --text-muted: #78716c;
+  --accent: #4f46e5;
+  --accent-soft: #eef2ff;
+  --ring: #a5b4fc;
+}
+
+[data-theme="dark"] {
+  --bg: #0c0a09;
+  --surface: #1c1917;
+  --surface-2: #262322;
+  --border: #292524;
+  --text: #fafaf9;
+  --text-muted: #a8a29e;
+  --accent: #818cf8;
+  --accent-soft: #1e1b4b;
+  --ring: #4f46e5;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* 语义化组件类：主题切换在一处生效 */
+@layer components {
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.75rem;
+  }
+  .surface-2 {
+    background: var(--surface-2);
+  }
+  .muted {
+    color: var(--text-muted);
+  }
+  .divide-token {
+    border-color: var(--border);
+  }
+  .input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    color: var(--text);
+  }
+  .input::placeholder {
+    color: var(--text-muted);
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 35%, transparent);
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    border-radius: 0.5rem;
+    padding: 0.5rem 1.25rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: filter 0.15s ease;
+  }
+  .btn-primary:hover:not(:disabled) {
+    filter: brightness(1.1);
+  }
+  .btn-primary:disabled {
+    opacity: 0.5;
+  }
+  .btn-ghost {
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 0.5rem;
+    padding: 0.375rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+  .btn-ghost:hover {
+    background: var(--surface-2);
+  }
+}

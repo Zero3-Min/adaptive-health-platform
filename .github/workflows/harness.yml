@@ -1,0 +1,49 @@
+name: Quality Harness
+
+on:
+  schedule:
+    - cron: "0 2 * * 1" # 每周一 02:00 UTC，防退化
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - "agents/**"
+      - "core/evaluation/**"
+      - "evolution/**"
+
+jobs:
+  harness:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: harness
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/harness
+      # 未配置任何 LLM secret 时以 mock 模式运行：仍守护评分管线、上下文组装与
+      # 安全维度不退化。配置 ARK_API_KEY 等 secrets 后即为真实质量门。
+      ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+      ARK_MODEL_COACH: ${{ secrets.ARK_MODEL_COACH }}
+      ARK_MODEL_REFLECTION: ${{ secrets.ARK_MODEL_REFLECTION }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync
+      - name: Migrate
+        run: uv run alembic upgrade head
+      - name: Coach harness (regression gate)
+        run: uv run python -m evolution.harness --agent coach --assert-min 0.20
+      - name: Reflection harness (regression gate)
+        run: uv run python -m evolution.harness --agent reflection --assert-min 0.60

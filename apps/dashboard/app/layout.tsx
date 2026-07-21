@@ -1,48 +1,50 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import "./globals.css";
 import { UserIdProvider } from "@/lib/user-id";
+import { ThemeProvider, ThemeToggle } from "@/lib/theme";
 import { UserIdInput } from "@/components/user-id-input";
+import { OnboardingGate } from "@/components/onboarding";
+import { Nav } from "@/components/nav";
 
 export const metadata: Metadata = {
-  title: "Adaptive Health Platform",
-  description: "Health OS MVP dashboard",
+  title: "Health OS — 会自我进化的健康操作系统",
+  description: "A health OS that gets smarter every day — and optimizes itself.",
 };
 
-const NAV = [
-  { href: "/", label: "今日打卡" },
-  { href: "/coach", label: "教练对话" },
-  { href: "/insights", label: "我的洞察" },
-];
+const themeInit = `(function(){try{var t=localStorage.getItem('health-platform-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.setAttribute('data-theme',t);}catch(e){}})();`;
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh">
-      <body className="min-h-screen bg-neutral-50 text-neutral-900 antialiased">
-        <UserIdProvider>
-          <header className="border-b border-neutral-200 bg-white">
-            <div className="mx-auto flex max-w-3xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
-              <span className="font-semibold">Health OS</span>
-              <nav className="flex gap-4 text-sm text-neutral-600">
-                {NAV.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="hover:text-neutral-900"
-                  >
-                    {item.label}
-                  </Link>
-                ))}
-              </nav>
-              <div className="ml-auto">
-                <UserIdInput />
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInit }} />
+      </head>
+      <body className="min-h-screen antialiased">
+        <ThemeProvider>
+          <UserIdProvider>
+            <header
+              className="sticky top-0 z-10 border-b backdrop-blur"
+              style={{
+                borderColor: "var(--border)",
+                background: "color-mix(in srgb, var(--bg) 85%, transparent)",
+              }}
+            >
+              <div className="mx-auto flex max-w-4xl flex-wrap items-center gap-x-5 gap-y-2 px-4 py-3">
+                <span className="font-semibold">🏃 Health OS</span>
+                <Nav />
+                <div className="ml-auto flex items-center gap-2">
+                  <UserIdInput />
+                  <ThemeToggle />
+                </div>
               </div>
-            </div>
-          </header>
-          <main className="mx-auto max-w-3xl px-4 py-8">{children}</main>
-        </UserIdProvider>
+            </header>
+            <main className="mx-auto max-w-4xl px-4 py-8">
+              <OnboardingGate>{children}</OnboardingGate>
+            </main>
+          </UserIdProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

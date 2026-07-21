@@ -236,6 +236,25 @@ class MemoryEngine:
             session.refresh(row)
             return EvolutionLog.model_validate(row)
 
+    def list_evolution(
+        self, user_id: uuid.UUID | None = None, limit: int = 100
+    ) -> list[EvolutionLog]:
+        """按时间倒序列出演进日志（Layer 5）。
+
+        user_id 为 None 时返回全部（含系统级变更）；否则返回该用户相关的记录
+        以及 user_id 为空的系统级记录（如规则采纳、embedding 降级）。
+        """
+        with self._session_factory() as session:
+            query = select(orm.EvolutionLog)
+            if user_id is not None:
+                query = query.where(
+                    (orm.EvolutionLog.user_id == user_id) | (orm.EvolutionLog.user_id.is_(None))
+                )
+            rows = session.scalars(
+                query.order_by(orm.EvolutionLog.created_at.desc()).limit(limit)
+            ).all()
+            return [EvolutionLog.model_validate(row) for row in rows]
+
     def _log_degradation_once(self) -> None:
         """embedding 降级为 hash 占位实现时，向 Layer 5 记录一次（每引擎实例一次）。"""
         if self._embedding_degraded and not self._degradation_logged:
