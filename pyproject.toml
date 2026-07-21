@@ -39,7 +39,7 @@ plugins = ["pydantic.mypy"]
 testpaths = ["tests"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["database", "models", "core", "agents", "apps", "evolution"]
+packages = ["database", "models", "core", "agents", "apps", "evolution", "analytics"]
 
 [build-system]
 requires = ["hatchling"]

@@ -274,3 +274,35 @@ class TestCoachGracefulDegradation:
             )
         assert resp.status_code == 200
         assert resp.json()["degraded"] is True
+
+
+class TestStats:
+    def test_streak_and_averages(self, client: TestClient, auth: dict[str, str]) -> None:
+        from datetime import date as _date
+        from datetime import timedelta as _td
+
+        today = _date.today()
+        for i in range(3):
+            client.post(
+                "/logs",
+                headers=auth,
+                json={
+                    "date": (today - _td(days=i)).isoformat(),
+                    "sleep_hours": 7.0,
+                    "mood": 8,
+                    "steps": 9000,
+                },
+            )
+        stats = client.get("/stats", headers=auth).json()
+        assert stats["current_streak"] == 3
+        assert stats["days_logged"] == 3
+        assert stats["avg_sleep_hours"] == 7.0
+        assert stats["avg_steps"] == 9000
+
+    def test_empty_stats(self, client: TestClient, auth: dict[str, str]) -> None:
+        stats = client.get("/stats", headers=auth).json()
+        assert stats["current_streak"] == 0
+        assert stats["days_logged"] == 0
+
+    def test_requires_auth(self, client: TestClient) -> None:
+        assert client.get("/stats").status_code == 401

@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { api, ApiError, type DailyLog, type DailyLogPayload } from "@/lib/api";
+import { api, ApiError, type DailyLog, type DailyLogPayload, type Stats } from "@/lib/api";
 import { useUserId } from "@/lib/user-id";
 import { TrendCharts } from "@/components/trend-chart";
+import { StatsBar } from "@/components/stats-bar";
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -25,13 +26,16 @@ export default function DailyLogPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [logs, setLogs] = useState<DailyLog[]>([]);
+  const [stats, setStats] = useState<Stats | null>(null);
 
   const loadLogs = useCallback(async () => {
     if (!userId) return;
     try {
-      setLogs(await api.getLogs(userId, 7));
+      const [timeline, s] = await Promise.all([api.getLogs(userId, 7), api.getStats(userId)]);
+      setLogs(timeline);
+      setStats(s);
     } catch {
-      /* 趋势区为增强信息，加载失败不阻塞打卡 */
+      /* 趋势/统计为增强信息，加载失败不阻塞打卡 */
     }
   }, [userId]);
 
@@ -64,7 +68,7 @@ export default function DailyLogPage() {
   }
 
   const field = "input";
-  const label = "mb-1 block mb-1 block text-sm font-medium";
+  const label = "mb-1 block text-sm font-medium";
 
   return (
     <div className="space-y-8">
@@ -74,6 +78,8 @@ export default function DailyLogPage() {
           记录越多，教练越懂你——每条建议都会引用你自己的数据。
         </p>
       </div>
+
+      <StatsBar stats={stats} />
 
       <form onSubmit={handleSubmit} className="card space-y-4 p-5">
         <div className="grid gap-4 sm:grid-cols-2">

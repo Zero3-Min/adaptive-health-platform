@@ -106,6 +106,16 @@ export interface EvolutionLog {
   created_at: string | null;
 }
 
+export interface Stats {
+  current_streak: number;
+  longest_streak: number;
+  days_logged: number;
+  window_days: number;
+  avg_sleep_hours: number | null;
+  avg_mood: number | null;
+  avg_steps: number | null;
+}
+
 export const api = {
   register: (email: string) =>
     request<User>("/users", "", {
@@ -140,4 +150,5 @@ export const api = {
     }),
   listEvolution: (userId: string) =>
     request<EvolutionLog[]>("/evolution", userId),
+  getStats: (userId: string) => request<Stats>("/stats", userId),
 };
