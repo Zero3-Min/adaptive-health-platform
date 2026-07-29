@@ -45,7 +45,7 @@ rubrics.
 **per-agent model selection** (a conversational model for coaching, a reasoning model
 for reflection). No API key? Everything runs in deterministic mock mode.
 
-✅ **202 tests, 99% core coverage, 100% type-annotated (mypy strict).**
+✅ **223 tests, 99% core coverage, 100% type-annotated (mypy strict).**
 
 ## How the self-optimization loop works
 
@@ -116,6 +116,20 @@ the fix for each. Secrets are only ever shown as `ark-…f7c2 (len=45)`.
 No key at all is a supported mode: both agents fall back to a deterministic
 mock client, so the whole stack runs offline.
 
+To check a key and several endpoints without installing anything —
+`scripts/ark_probe.py` is stdlib-only (no `uv sync`, no venv, no database). It
+reports per-endpoint latency and JSON compliance, then prints the recommended
+per-role configuration:
+
+```bash
+export ARK_API_KEY=...
+python3 scripts/ark_probe.py ep-aaa ep-bbb ep-ccc
+```
+
+Failures come back as conclusions, not stack traces: 401 = bad key, 403 = valid
+key without access to that endpoint, 404 = wrong endpoint id, 429 = key is fine
+but rate-limited, connection failure = network/proxy.
+
 Behind a firewall that blocks `*.volces.com`? Run the **LLM Smoke Test**
 workflow (Actions → *LLM Smoke Test* → *Run workflow*) — it makes the real call
 from a GitHub runner using `secrets.ARK_API_KEY` plus the
@@ -151,7 +165,7 @@ Deep dives: [architecture overview](docs/architecture/overview.md) ·
 ```bash
 uv run pytest                    # unit tests (DB-backed tests auto-skip)
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/health_platform \
-  uv run pytest                  # full suite: 202 tests incl. the optimization loop
+  uv run pytest                  # full suite: 223 tests incl. the optimization loop
 ```
 
 ## Documentation in Chinese

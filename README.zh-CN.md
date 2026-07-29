@@ -14,7 +14,7 @@
   可复现、可审查、可回滚
 - 🔌 **多 LLM provider**：Anthropic Claude / 火山方舟（豆包、DeepSeek、GLM），按 Agent
   角色配不同模型；无 key 时全链路 mock 可跑
-- ✅ **202 项测试**、core 层覆盖率 99%+、类型注解 100%（mypy strict）
+- ✅ **223 项测试**、core 层覆盖率 99%+、类型注解 100%（mypy strict）
 
 ## 自我优化闭环
 
@@ -76,6 +76,20 @@ uv run python scripts/verify_llm.py           # 自检 + 两个角色各发一�
 如果所在网络封了 `*.volces.com`，可以走 GitHub Actions 的 **LLM Smoke Test**
 工作流（Actions → LLM Smoke Test → Run workflow），用仓库 secret `ARK_API_KEY`
 与变量 `ARK_MODEL_COACH` / `ARK_MODEL_REFLECTION` 在 runner 上发真实请求。
+
+#### 快速验证密钥与接入点（免安装）
+
+`scripts/ark_probe.py` 只用 Python 标准库，不需要 `uv sync`、不需要虚拟环境、
+不需要数据库，克隆下来就能跑。它会逐个测接入点，报延迟、报 JSON 合规性，
+并直接给出建议的 `ARK_MODEL_COACH` / `ARK_MODEL_REFLECTION` 配置：
+
+```bash
+export ARK_API_KEY=...
+python3 scripts/ark_probe.py ep-aaa ep-bbb ep-ccc ep-ddd
+```
+
+失败会被翻译成结论而不是栈：401 = 密钥无效，403 = 密钥有效但没开通该接入点，
+404 = 接入点 ID 不对，429 = 密钥可用只是被限流，连接失败 = 网络/代理问题。
 
 ### 2. 手动迁移（不用 compose 里的 api 服务时）
 
