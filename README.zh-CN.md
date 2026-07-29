@@ -14,7 +14,7 @@
   可复现、可审查、可回滚
 - 🔌 **多 LLM provider**：Anthropic Claude / 火山方舟（豆包、DeepSeek、GLM），按 Agent
   角色配不同模型；无 key 时全链路 mock 可跑
-- ✅ **132 项测试**、core 层覆盖率 99%+、类型注解 100%（mypy strict）
+- ✅ **202 项测试**、core 层覆盖率 99%+、类型注解 100%（mypy strict）
 
 ## 自我优化闭环
 
@@ -56,8 +56,26 @@ ARK_MODEL_REFLECTION=ep-... # 结构化/推理强的模型（Reflection）\
 docker compose up --build -d
 ```
 
-配好 key 后可用 `uv run python scripts/verify_llm.py` 做一次真实连通性验证
-（对两个角色各发一条真实请求，Reflection 会校验 JSON 输出合规）。
+密钥的查找顺序是 **环境变量 → 仓库根 `.env` → `<NAME>_FILE` 指向的密钥文件**
+（Docker/K8s secret 惯例），密钥存在哪一处都能被自动接入：
+
+```bash
+export ARK_API_KEY_FILE=/run/secrets/ark_api_key   # 密钥不进环境变量
+```
+
+配好后做一次自检与真实验证：
+
+```bash
+uv run python scripts/verify_llm.py --doctor  # 只自检配置，不发请求
+uv run python scripts/verify_llm.py           # 自检 + 两个角色各发一条真实请求
+```
+
+`--doctor` 会把三种"长得一样但修法不同"的失败分开：密钥没读到 / 接入点没配 /
+域名不可达，并给出各自的修复动作；密钥只以 `ark-…f7c2 (len=45)` 的形式打印。
+
+如果所在网络封了 `*.volces.com`，可以走 GitHub Actions 的 **LLM Smoke Test**
+工作流（Actions → LLM Smoke Test → Run workflow），用仓库 secret `ARK_API_KEY`
+与变量 `ARK_MODEL_COACH` / `ARK_MODEL_REFLECTION` 在 runner 上发真实请求。
 
 ### 2. 手动迁移（不用 compose 里的 api 服务时）
 

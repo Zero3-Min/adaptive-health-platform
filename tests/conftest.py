@@ -26,6 +26,22 @@ requires_db = pytest.mark.skipif(
 )
 
 
+@pytest.fixture(autouse=True)
+def _no_dotenv_leak() -> Iterator[None]:
+    """禁止测试读取开发者本地的 .env——真实密钥不得影响测试结果。
+
+    core.config 会自动向上查找 .env；这里把"已尝试过且没找到"的状态钉死，
+    需要 dotenv 行为的用例（tests/test_config.py）自己重置该状态。
+    """
+    from core import config
+
+    config._loaded_from = None
+    config._load_attempted = True
+    yield
+    config._loaded_from = None
+    config._load_attempted = False
+
+
 def alembic_config() -> Config:
     cfg = Config(os.path.join(REPO_ROOT, "alembic.ini"))
     cfg.set_main_option("script_location", os.path.join(REPO_ROOT, "database/migrations"))

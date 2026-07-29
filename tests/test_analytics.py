@@ -13,7 +13,7 @@ UID = uuid.uuid4()
 
 
 def _log(days_ago: int, **fields: object) -> DailyLog:
-    return DailyLog(user_id=UID, date=TODAY - timedelta(days=days_ago), **fields)  # type: ignore[arg-type]
+    return DailyLog(user_id=UID, date=TODAY - timedelta(days=days_ago), **fields)
 
 
 class TestStreak:

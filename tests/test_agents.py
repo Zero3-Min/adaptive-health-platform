@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import date
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
@@ -136,6 +137,36 @@ class TestArkLLMClient:
 
         with pytest.raises(httpx.HTTPStatusError):
             ArkLLMClient(api_key="bad", model="ep-x").complete("s", "u")
+
+    def test_transport_failure_becomes_actionable_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import httpx
+
+        def fake_post(url: str, **kwargs: object) -> httpx.Response:
+            raise httpx.ConnectError("tunnel blocked", request=httpx.Request("POST", url))
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        monkeypatch.setattr("time.sleep", lambda _s: None)
+        from agents.llm import ArkLLMClient, LLMConnectionError
+
+        client = ArkLLMClient(api_key="ark-test", model="ep-x", max_retries=1)
+        with pytest.raises(LLMConnectionError, match="ark.cn-beijing.volces.com"):
+            client.complete("s", "u")
+
+    def test_key_from_secret_file_is_used(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """密钥存成文件（Docker/K8s secret 的常见形态）也能自动接入。"""
+        secret = tmp_path / "ark.key"
+        secret.write_text("ark-from-file\n", encoding="utf-8")
+        for var in ("LLM_PROVIDER", "ANTHROPIC_API_KEY", "ARK_API_KEY"):
+            monkeypatch.delenv(var, raising=False)
+        monkeypatch.setenv("ARK_API_KEY_FILE", str(secret))
+        monkeypatch.setenv("ARK_MODEL", "ep-default")
+        client, mocked = resolve_llm_client("coach")
+        assert mocked is False
+        assert client.name == "ark:ep-default"
 
 
 class TestExtractJson:

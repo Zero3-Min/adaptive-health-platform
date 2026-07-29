@@ -1,14 +1,15 @@
-"""真实 LLM 连通性验证：对 Coach 与 Reflection 两个角色各发一次真实请求。
+"""真实 LLM 连通性验证：先自检配置，再对两个角色各发一次真实请求。
 
-用法（本地，配好环境变量后）：
-    ARK_API_KEY=... ARK_MODEL_COACH=ep-... ARK_MODEL_REFLECTION=ep-... \
-        uv run python scripts/verify_llm.py
+用法（本地，配好环境变量或 .env 后）：
+    uv run python scripts/verify_llm.py            # 自检 + 真实请求
+    uv run python scripts/verify_llm.py --doctor   # 只自检，不发请求
 """
 
 from __future__ import annotations
 
 import sys
 
+from agents.doctor import render_report, run_doctor
 from agents.llm import Role, resolve_llm_client
 from agents.reflection.agent import SYSTEM_PROMPT as REFLECTION_PROMPT
 from agents.reflection.agent import _extract_json
@@ -51,6 +52,13 @@ def check(role: Role, system: str, user_message: str, expect_json: bool) -> bool
 
 
 def main() -> int:
+    print("=== 接入自检 ===")
+    results = run_doctor()
+    print(render_report(results))
+    if "--doctor" in sys.argv:
+        return 0 if all(r.ok for r in results) else 1
+
+    print("\n=== 真实请求 ===")
     ok_coach = check(
         "coach",
         system="You are a personal health coach. Reply in 1-2 short sentences in Chinese.",

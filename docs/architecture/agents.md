@@ -37,6 +37,16 @@ Reflection 用 `ARK_MODEL_REFLECTION`（建议结构化/推理强的模型），
 测试全部注入 mock，不发真实请求。Agent 构造函数也接受显式 `llm=` 注入，
 便于单测精确控制"模型输出"。
 
+密钥不直接读 `os.environ`，而是走 `core.config.get_secret`：**环境变量 → 仓库根 `.env`
+→ `<NAME>_FILE` 指向的密钥文件**（Docker/K8s secret 惯例）。三条路径同一套解析，
+密钥落在哪一处都能接入，且部署方式变化不需要改代码。
+
+`agents/doctor.py` 提供接入自检（`scripts/verify_llm.py --doctor`），把三类失败拆开：
+密钥没读到 / 接入点没配 / 域名不可达。连通性探测刻意走 httpx（与真实调用同一条
+路径、同一套代理设置）而不是裸 TCP——企业代理常常放行 TCP 却拒绝 CONNECT，
+"探测通过、真实请求失败"的假阳性比没有检查更误导人。网络层失败会被包装成
+`LLMConnectionError` 并带上排查方向，区别于鉴权/参数类错误。
+
 ## 数据流
 
 ```mermaid

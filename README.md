@@ -45,7 +45,7 @@ rubrics.
 **per-agent model selection** (a conversational model for coaching, a reasoning model
 for reflection). No API key? Everything runs in deterministic mock mode.
 
-✅ **147 tests, 99% core coverage, 100% type-annotated (mypy strict).**
+✅ **202 tests, 99% core coverage, 100% type-annotated (mypy strict).**
 
 ## How the self-optimization loop works
 
@@ -88,6 +88,11 @@ curl -X POST localhost:8000/users -H 'content-type: application/json' \
 
 ### Bring your own LLM
 
+Keys are picked up from three places, in order: **environment variables** → a
+**`.env`** file at the repo root → the file that **`<NAME>_FILE`** points at
+(the Docker/Kubernetes secret convention). Put the key wherever it already
+lives — no code change required.
+
 ```bash
 # Anthropic
 export ANTHROPIC_API_KEY=sk-ant-...
@@ -97,8 +102,24 @@ export ARK_API_KEY=...
 export ARK_MODEL_COACH=ep-...        # conversational model
 export ARK_MODEL_REFLECTION=ep-...   # reasoning / structured-output model
 
-uv run python scripts/verify_llm.py  # one-shot connectivity + JSON-compliance check
+# or keep the key out of the environment entirely
+export ARK_API_KEY_FILE=/run/secrets/ark_api_key
+
+uv run python scripts/verify_llm.py --doctor  # config self-check, no request sent
+uv run python scripts/verify_llm.py           # + one real call per agent role
 ```
+
+`--doctor` separates the three failure modes that look identical from the
+outside — key not found, endpoint not configured, host unreachable — and prints
+the fix for each. Secrets are only ever shown as `ark-…f7c2 (len=45)`.
+
+No key at all is a supported mode: both agents fall back to a deterministic
+mock client, so the whole stack runs offline.
+
+Behind a firewall that blocks `*.volces.com`? Run the **LLM Smoke Test**
+workflow (Actions → *LLM Smoke Test* → *Run workflow*) — it makes the real call
+from a GitHub runner using `secrets.ARK_API_KEY` plus the
+`ARK_MODEL_COACH` / `ARK_MODEL_REFLECTION` repository variables.
 
 ### Run the self-optimization loop
 
@@ -130,7 +151,7 @@ Deep dives: [architecture overview](docs/architecture/overview.md) ·
 ```bash
 uv run pytest                    # unit tests (DB-backed tests auto-skip)
 TEST_DATABASE_URL=postgresql+psycopg://postgres:postgres@localhost:5432/health_platform \
-  uv run pytest                  # full suite: 147 tests incl. the optimization loop
+  uv run pytest                  # full suite: 202 tests incl. the optimization loop
 ```
 
 ## Documentation in Chinese

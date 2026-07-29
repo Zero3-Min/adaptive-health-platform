@@ -1,0 +1,42 @@
+name: LLM Smoke Test
+
+# 对真实模型服务发一次请求，验证密钥 / 接入点 / 网络三者都通。
+# 手动触发（Actions → LLM Smoke Test → Run workflow），不在每次 push 上跑，避免消耗额度。
+on:
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Preflight (no secrets required)
+        run: uv run python scripts/verify_llm.py --doctor || true
+
+      - name: Verify secrets are configured
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ARK_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::未配置模型密钥。请到 Settings → Secrets and variables → Actions"
+            echo "::error::添加 secret ARK_API_KEY，并添加 variables ARK_MODEL_COACH / ARK_MODEL_REFLECTION。"
+            exit 1
+          fi
+
+      - name: Real request to Coach + Reflection
+        env:
+          ARK_API_KEY: ${{ secrets.ARK_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ARK_MODEL_COACH: ${{ vars.ARK_MODEL_COACH || secrets.ARK_MODEL_COACH }}
+          ARK_MODEL_REFLECTION: ${{ vars.ARK_MODEL_REFLECTION || secrets.ARK_MODEL_REFLECTION }}
+          ARK_MODEL: ${{ vars.ARK_MODEL || secrets.ARK_MODEL }}
+          ARK_BASE_URL: ${{ vars.ARK_BASE_URL }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+        run: uv run python scripts/verify_llm.py

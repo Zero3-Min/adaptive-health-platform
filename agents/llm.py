@@ -4,6 +4,9 @@
 - LLM_PROVIDER=anthropic|ark 显式指定；
 - 未指定时按 ANTHROPIC_API_KEY → ARK_API_KEY → mock 自动解析。
 方舟按 Agent 角色选模型（ARK_MODEL_COACH / ARK_MODEL_REFLECTION，兜底 ARK_MODEL）。
+
+密钥的查找交给 core.config.get_secret：环境变量 → 仓库根 `.env` → `<NAME>_FILE`
+指向的密钥文件，因此密钥无论存在哪一处都能被自动接入。
 """
 
 from __future__ import annotations
@@ -11,13 +14,20 @@ from __future__ import annotations
 import os
 import time
 from typing import Literal, Protocol
+from urllib.parse import urlsplit
 
 import httpx
+
+from core.config import get_secret, load_env
 
 MODEL_ID = "claude-sonnet-4-6"
 ARK_DEFAULT_BASE_URL = "https://ark.cn-beijing.volces.com/api/v3"
 
 Role = Literal["coach", "reflection"]
+
+
+class LLMConnectionError(RuntimeError):
+    """网络层无法抵达模型服务——区别于鉴权/参数错误，通常不是代码问题。"""
 
 
 class LLMClient(Protocol):
@@ -103,6 +113,13 @@ class ArkLLMClient:
             if attempt < self._max_retries:
                 time.sleep(2**attempt)  # 1s, 2s
         assert last_exc is not None
+        if isinstance(last_exc, httpx.TimeoutException | httpx.TransportError):
+            host = urlsplit(self._url).netloc
+            raise LLMConnectionError(
+                f"无法连接火山方舟（{host}）：{type(last_exc).__name__}: {last_exc}。"
+                "常见原因：① 出站网络策略/防火墙未放行该域名；② 区域不匹配——"
+                "海外账号需把 ARK_BASE_URL 指向对应区域端点；③ 代理需要 HTTPS_PROXY。"
+            ) from last_exc
         raise last_exc
 
 
@@ -137,7 +154,7 @@ class MockLLMClient:
 
 def _resolve_ark_model(role: Role) -> str:
     """按 Agent 角色取模型：ARK_MODEL_<ROLE> 优先，兜底 ARK_MODEL。"""
-    model = os.environ.get(f"ARK_MODEL_{role.upper()}") or os.environ.get("ARK_MODEL")
+    model = get_secret(f"ARK_MODEL_{role.upper()}") or get_secret("ARK_MODEL")
     if not model:
         raise ValueError(
             "ARK_API_KEY is set but no model configured: "
@@ -152,14 +169,15 @@ def resolve_llm_client(role: Role = "coach") -> tuple[LLMClient, bool]:
     - LLM_PROVIDER=anthropic|ark 显式指定 provider（缺相应 key 则报错）；
     - 未指定时：ANTHROPIC_API_KEY → ARK_API_KEY → mock 降级。
     """
+    load_env()
     provider = os.environ.get("LLM_PROVIDER", "").strip().lower()
-    anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-    ark_key = os.environ.get("ARK_API_KEY")
+    anthropic_key = get_secret("ANTHROPIC_API_KEY")
+    ark_key = get_secret("ARK_API_KEY")
 
     if provider == "anthropic":
         if not anthropic_key:
             raise ValueError("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set")
-        return AnthropicLLMClient(), False
+        return AnthropicLLMClient(anthropic_key), False
     if provider == "ark":
         if not ark_key:
             raise ValueError("LLM_PROVIDER=ark but ARK_API_KEY is not set")
@@ -168,7 +186,7 @@ def resolve_llm_client(role: Role = "coach") -> tuple[LLMClient, bool]:
         raise ValueError(f"unknown LLM_PROVIDER: {provider!r} (expected 'anthropic' or 'ark')")
 
     if anthropic_key:
-        return AnthropicLLMClient(), False
+        return AnthropicLLMClient(anthropic_key), False
     if ark_key:
         return _build_ark_client(ark_key, role), False
     return MockLLMClient(), True
@@ -178,5 +196,5 @@ def _build_ark_client(api_key: str, role: Role) -> ArkLLMClient:
     return ArkLLMClient(
         api_key=api_key,
         model=_resolve_ark_model(role),
-        base_url=os.environ.get("ARK_BASE_URL", ARK_DEFAULT_BASE_URL),
+        base_url=get_secret("ARK_BASE_URL") or ARK_DEFAULT_BASE_URL,
     )
